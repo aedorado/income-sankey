@@ -22,11 +22,14 @@ function getNodeNumber(node) {
     return nodeNumber[node];
 }
 
-function getAllNodes(transactions) {
+function getAllNodes(transactions, subc) {
+    nodeNumber = {};
     var nodeSet = new Set();
     transactions.map(t => {
         nodeSet.add(t.category);
-        // nodeSet.add(t.subcategory);  // uncomment to add subcategories
+        if (subc) {
+            nodeSet.add(t.subcategory);  // uncomment to add subcategories
+        }
     });
     nodeSet.add("Total Income");
     nodeSet = [...nodeSet].map((node, i) => {
@@ -50,9 +53,7 @@ function buildRunningTotals(src, tar, amt, runningTotals) {
     return runningTotals;
 }
 
-function getAllLinks(transactions, nodes) {
-    var totalIncome = 0,
-        totalExpense = 0;
+function getAllLinks(transactions, nodes, subc) {
     var links = [];
     var runningTotals = {};
     transactions.map(t => {
@@ -70,15 +71,15 @@ function getAllLinks(transactions, nodes) {
                 t.amount,
                 runningTotals
             );
-            // if (t.subcategory !== '') {
-            //     // console.log(t.category, t.subcategory, t.amount)
-            //     runningTotals = buildRunningTotals(
-            //         getNodeNumber(t.category),
-            //         getNodeNumber(t.subcategory),
-            //         t.amount,
-            //         runningTotals
-            //     );
-            // }
+            if (t.subcategory !== '' && subc) {
+                // console.log(t.category, t.subcategory, t.amount)
+                runningTotals = buildRunningTotals(
+                    getNodeNumber(t.category),
+                    getNodeNumber(t.subcategory),
+                    t.amount,
+                    runningTotals
+                );
+            }
         }
     });
 
@@ -102,8 +103,6 @@ function createSankey(energy) {
         .size([width, height]);
 
     var path = sankey.link();
-
-    var freqCounter = 1;
 
     // d3.json(json, function (energy) {
         sankey
@@ -130,7 +129,8 @@ function createSankey(energy) {
             .call(d3.behavior.drag()
                 .origin(function (d) { return d; })
                 .on("dragstart", function () { this.parentNode.appendChild(this); })
-                .on("drag", dragmove));
+                .on("drag", dragmove))
+                .on("click", clickNode);
 
         node.append("rect")
             .attr("height", function (d) { return d.dy; })
@@ -155,6 +155,10 @@ function createSankey(energy) {
             d3.select(this).attr("transform", "translate(" + d.x + "," + (d.y = Math.max(0, Math.min(height - d.dy, d3.event.y))) + ")");
             sankey.relayout();
             link.attr("d", path);
+        }
+
+        function clickNode() {
+            console.log(this);
         }
 
         var linkExtent = d3.extent(energy.links, function (d) { return d.value });
@@ -223,6 +227,8 @@ function createSankey(energy) {
     // });
 }
 
+var transactions;
+
 function readSingleFile(e) {
     var file = e.target.files[0];
     if (!file) {
@@ -232,13 +238,13 @@ function readSingleFile(e) {
     reader.onload = function (e) {
         var contents = e.target.result.split('\n');
         contents = contents.slice(1);
-        var transactions = contents.map(ele => {
+        transactions = contents.map(ele => {
             return new Transaction(ele);
         });
 
-        var allNodes = getAllNodes(transactions);
-        var allLinks = getAllLinks(transactions, allNodes);
-
+        var allNodes = getAllNodes(transactions, false);
+        var allLinks = getAllLinks(transactions, allNodes, false);
+        console.log(allNodes, allLinks);
         createSankey({
             nodes: allNodes,
             links: allLinks
@@ -248,4 +254,30 @@ function readSingleFile(e) {
     reader.readAsText(file);
 }
 
+function clearCanvas() {
+    var canvas = document.getElementById('can');
+    var context = canvas.getContext('2d');
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    svg.selectAll("*").remove();
+}
+
+function changeGraph(e) {
+    clearCanvas();
+    var year = e.target.value.split('-')[0];
+    var month = e.target.value.split('-')[1];
+    var chosenDate = new Date(month + '/1/' + year);
+    var someTransactions = transactions.filter(t => {
+        return (t.date.getMonth() === chosenDate.getMonth() && t.date.getYear() === chosenDate.getYear());
+    });
+    var allNodes = getAllNodes(someTransactions, true);
+    var allLinks = getAllLinks(someTransactions, allNodes, true);
+    console.log(allNodes, allLinks);
+
+    createSankey({
+        nodes: allNodes,
+        links: allLinks,
+    });
+}
+
 document.getElementById('file-input').addEventListener('change', readSingleFile, false);
+document.getElementById('month-input').addEventListener('change', changeGraph, false);
